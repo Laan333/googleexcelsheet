@@ -122,12 +122,62 @@ class ExcelSingleFileWorker:
                 # Копируем формат числа
                 try:
                     target_cell.number_format = source_cell.number_format
-                    # Копируем также стиль ячейки, если он есть
+
+                    # Копируем стили ячейки, создавая новые объекты вместо прямого присваивания
                     if source_cell.has_style:
-                        target_cell.font = source_cell.font
-                        target_cell.border = source_cell.border
-                        target_cell.fill = source_cell.fill
-                        target_cell.alignment = source_cell.alignment
+                        # 1. Копируем шрифт
+                        if source_cell.font:
+                            from openpyxl.styles import Font
+                            target_cell.font = Font(
+                                name=source_cell.font.name,
+                                size=source_cell.font.size,
+                                bold=source_cell.font.bold,
+                                italic=source_cell.font.italic,
+                                vertAlign=source_cell.font.vertAlign,
+                                underline=source_cell.font.underline,
+                                strike=source_cell.font.strike,
+                                color=source_cell.font.color
+                            )
+
+                        # 2. Копируем выравнивание
+                        if source_cell.alignment:
+                            from openpyxl.styles import Alignment
+                            target_cell.alignment = Alignment(
+                                horizontal=source_cell.alignment.horizontal,
+                                vertical=source_cell.alignment.vertical,
+                                textRotation=source_cell.alignment.textRotation,
+                                wrapText=source_cell.alignment.wrapText,
+                                shrinkToFit=source_cell.alignment.shrinkToFit,
+                                indent=source_cell.alignment.indent
+                            )
+
+                        # 3. Копируем границы (более сложный случай, копируем только стиль границы)
+                        if source_cell.border:
+                            from openpyxl.styles import Border, Side
+                            sides = {}
+                            for side_name in ['left', 'right', 'top', 'bottom']:
+                                source_side = getattr(source_cell.border, side_name)
+                                if source_side and source_side.style:
+                                    sides[side_name] = Side(style=source_side.style, color=source_side.color)
+                                else:
+                                    sides[side_name] = Side(style=None)
+
+                            target_cell.border = Border(**sides)
+
+                        # 4. Копируем заливку (только если это PatternFill)
+                        if source_cell.fill:
+                            from openpyxl.styles import PatternFill
+                            try:
+                                if hasattr(source_cell.fill, 'fill_type') and source_cell.fill.fill_type:
+                                    target_cell.fill = PatternFill(
+                                        fill_type=source_cell.fill.fill_type,
+                                        start_color=source_cell.fill.start_color,
+                                        end_color=source_cell.fill.end_color
+                                    )
+                            except Exception:
+                                # Пропускаем сложные типы заливки
+                                pass
+
                 except Exception as e:
                     logger.warning(f"⚠️ Не удалось скопировать формат ячейки {row_idx}:{col_idx}: {e}")
 
