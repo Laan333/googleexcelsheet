@@ -60,22 +60,34 @@ class ExcelSingleFileWorker:
         return self.wb.create_sheet(name)
 
     def archive_full_report(self):
+        # Проверяем существование листа Report
         if self.report_sheet not in self.wb.sheetnames:
             logger.warning(f"❌ Лист '{self.report_sheet}' не найден.")
             return
 
+        # Получаем лист Report по имени
         source_ws = self.wb[self.report_sheet]
+
+        # Создаем или заменяем архивный лист
         archive_ws = self._create_or_replace_sheet(self.current_month_sheet)
 
-        # переместим архивный лист сразу после "Report" (если Report есть)
+        # Перемещаем архивный лист сразу после "Report"
         try:
-            report_index = self.wb.sheetnames.index(self.report_sheet)
-            self.wb._sheets.remove(archive_ws)
-            self.wb._sheets.insert(report_index + 1, archive_ws)
+            if len(self.wb.sheetnames) > 1:
+                report_index = self.wb.sheetnames.index(self.report_sheet)
+                archive_index = self.wb.sheetnames.index(self.current_month_sheet)
+
+                # Вытаскиваем объект листа
+                archive_sheet = self.wb[self.current_month_sheet]
+
+                # Удаляем из текущей позиции и вставляем после Report
+                self.wb._sheets.pop(archive_index)
+                self.wb._sheets.insert(report_index + 1, archive_sheet)
+                logger.info(f"✅ Лист '{self.current_month_sheet}' перемещён после '{self.report_sheet}'")
         except Exception as e:
             logger.warning(f"⚠️ Не удалось переставить лист {self.current_month_sheet}: {e}")
 
-        # Копируем данные напрямую без преобразования
+        # Копируем данные из исходного листа
         rows_copied = 0
 
         # Получаем максимальный размер данных на исходном листе
@@ -89,14 +101,13 @@ class ExcelSingleFileWorker:
                 archive_ws.column_dimensions[col_letter].width = source_ws.column_dimensions[col_letter].width
 
         # Сохраняем заголовки до удаления листа Report
-        headers = None
+        headers = []
         try:
-            first_row = next(source_ws.iter_rows(min_row=1, max_row=1))
-            headers = [cell.value for cell in first_row]
+            if max_row > 0:
+                first_row = next(source_ws.iter_rows(min_row=1, max_row=1))
+                headers = [cell.value for cell in first_row]
         except StopIteration:
-            # Если лист пуст, создадим пустой список заголовков
-            headers = []
-            logger.warning("⚠️ Лист Report пуст, создаем пустой лист.")
+            logger.warning("⚠️ Лист Report пуст, создаем пустой список заголовков.")
 
         # Копируем все значения ячеек сначала
         for row_idx in range(1, max_row + 1):
@@ -108,52 +119,57 @@ class ExcelSingleFileWorker:
                 # Копируем значение как есть
                 target_cell.value = source_cell.value
 
-                # Копируем формат числа - это самое важное для сохранения форматирования чисел
+                # Копируем формат числа
                 try:
                     target_cell.number_format = source_cell.number_format
+                    # Копируем также стиль ячейки, если он есть
+                    if source_cell.has_style:
+                        target_cell.font = source_cell.font
+                        target_cell.border = source_cell.border
+                        target_cell.fill = source_cell.fill
+                        target_cell.alignment = source_cell.alignment
                 except Exception as e:
-                    logger.warning(f"⚠️ Не удалось скопировать формат числа: {e}")
+                    logger.warning(f"⚠️ Не удалось скопировать формат ячейки {row_idx}:{col_idx}: {e}")
 
             rows_copied += 1
 
         logger.info(f"📥 Перенесено {rows_copied} строк из '{self.report_sheet}' в '{self.current_month_sheet}'.")
 
-        # Теперь удаляем исходный лист Report
-        self.wb.remove(source_ws)
+        # Удаляем исходный лист Report по имени
+        if self.report_sheet in self.wb.sheetnames:
+            self.wb.remove(self.wb[self.report_sheet])
+            logger.info(f"🗑️ Лист '{self.report_sheet}' удален.")
 
-        # И создаем новый
+        # Создаем новый лист Report
         new_report_ws = self.wb.create_sheet(self.report_sheet)
 
         # Добавляем заголовки, если они есть
         if headers:
             new_report_ws.append(headers)
+            logger.info(f"📝 Заголовки добавлены в новый лист '{self.report_sheet}'.")
 
-        # перемещаем Report в начало
+        # Перемещаем Report в начало книги
         try:
-            self.wb._sheets.remove(new_report_ws)
-            self.wb._sheets.insert(0, new_report_ws)
-            logger.info(f"🧹 Лист '{self.report_sheet}' пересоздан и перемещён в начало.")
+            # Получаем индекс нового листа Report
+            new_index = self.wb.sheetnames.index(self.report_sheet)
+            # Перемещаем его в начало, если он не уже там
+            if new_index > 0:
+                # Получаем объект листа
+                sheet_to_move = self.wb[self.report_sheet]
+                # Удаляем его из текущей позиции
+                self.wb._sheets.pop(new_index)
+                # Вставляем в начало
+                self.wb._sheets.insert(0, sheet_to_move)
+                logger.info(f"🔄 Лист '{self.report_sheet}' перемещён в начало.")
         except Exception as e:
             logger.warning(f"⚠️ Не удалось переместить лист '{self.report_sheet}' в начало: {e}")
 
-        self._save()
-
-        logger.info(f"📥 Перенесено {rows_copied} строк из '{self.report_sheet}' в '{self.current_month_sheet}'.")
-
-        headers = [cell.value for cell in next(source_ws.iter_rows(min_row=1, max_row=1))]
-        self.wb.remove(source_ws)
-
-        new_report_ws = self.wb.create_sheet(self.report_sheet)
-        new_report_ws.append(headers)
-
-        # перемещаем Report в начало
-        self.wb._sheets.remove(new_report_ws)
-        self.wb._sheets.insert(0, new_report_ws)
-
-        logger.info(f"🧹 Лист '{self.report_sheet}' пересоздан и перемещён в начало.")
-
+        # Сохраняем изменения
         self._save()
 
     def _save(self):
-        self.wb.save(self.filepath)
-        logger.info(f"💾 Изменения сохранены в файле '{self.filepath}'.")
+        try:
+            self.wb.save(self.filepath)
+            logger.info(f"💾 Изменения сохранены в файле '{self.filepath}'.")
+        except Exception as e:
+            logger.error(f"❌ Ошибка при сохранении файла: {e}")
