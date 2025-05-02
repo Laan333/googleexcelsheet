@@ -40,14 +40,17 @@ class ExcelSingleFileWorker:
         """ Обрабатываем ячейку, преобразуя её в строку или оставляем как есть. """
         if isinstance(cell, (datetime.datetime, datetime.date)):
             return cell.strftime('%d.%m.%Y')
-        if isinstance(cell, float):  # если число с плавающей точкой
-            sanitized_value = f"{cell:.6f}".replace(",", ".")
+        elif isinstance(cell, float):  # если число с плавающей точкой
+            # Если значение с плавающей точкой, оставляем запятую (ничего не меняем)
+            sanitized_value = str(cell).replace('.', ',')  # меняем точку на запятую
             logger.debug(f"Санитизировано число с плавающей точкой: {cell} -> {sanitized_value}")
-            return sanitized_value  # Преобразуем в строку с точкой
-        if isinstance(cell, int):  # если целое число
+            return sanitized_value
+        elif isinstance(cell, int):  # если целое число
             logger.debug(f"Санитизировано целое число: {cell}")
             return str(cell)  # оставляем как строку целое число
-        return cell  # оставляем все остальные типы как есть
+        elif cell is None:  # если пустая ячейка
+            return ""
+        return str(cell).strip()  # в остальных случаях, просто преобразуем в строку
 
     def _create_or_replace_sheet(self, name: str):
         if name in self.wb.sheetnames:
@@ -74,7 +77,7 @@ class ExcelSingleFileWorker:
             logger.warning(f"⚠️ Не удалось переставить лист {self.current_month_sheet}: {e}")
 
         rows_copied = 0
-        for row in source_ws.iter_rows(values_only=True):
+        for row in source_ws.iter_rows(values_only=True):  # values_only=True — получаем только значения
             sanitized = [self._sanitize_cell(cell) for cell in row]
             logger.debug(f"Перенос строки: {row} -> {sanitized}")  # Логирование значений
             archive_ws.append(sanitized)
