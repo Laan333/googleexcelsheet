@@ -88,6 +88,16 @@ class ExcelSingleFileWorker:
             if col_letter in source_ws.column_dimensions:
                 archive_ws.column_dimensions[col_letter].width = source_ws.column_dimensions[col_letter].width
 
+        # Сохраняем заголовки до удаления листа Report
+        headers = None
+        try:
+            first_row = next(source_ws.iter_rows(min_row=1, max_row=1))
+            headers = [cell.value for cell in first_row]
+        except StopIteration:
+            # Если лист пуст, создадим пустой список заголовков
+            headers = []
+            logger.warning("⚠️ Лист Report пуст, создаем пустой лист.")
+
         # Копируем все значения ячеек сначала
         for row_idx in range(1, max_row + 1):
             for col_idx in range(1, max_col + 1):
@@ -108,17 +118,23 @@ class ExcelSingleFileWorker:
 
         logger.info(f"📥 Перенесено {rows_copied} строк из '{self.report_sheet}' в '{self.current_month_sheet}'.")
 
-        headers = [cell.value for cell in next(source_ws.iter_rows(min_row=1, max_row=1))]
+        # Теперь удаляем исходный лист Report
         self.wb.remove(source_ws)
 
+        # И создаем новый
         new_report_ws = self.wb.create_sheet(self.report_sheet)
-        new_report_ws.append(headers)
+
+        # Добавляем заголовки, если они есть
+        if headers:
+            new_report_ws.append(headers)
 
         # перемещаем Report в начало
-        self.wb._sheets.remove(new_report_ws)
-        self.wb._sheets.insert(0, new_report_ws)
-
-        logger.info(f"🧹 Лист '{self.report_sheet}' пересоздан и перемещён в начало.")
+        try:
+            self.wb._sheets.remove(new_report_ws)
+            self.wb._sheets.insert(0, new_report_ws)
+            logger.info(f"🧹 Лист '{self.report_sheet}' пересоздан и перемещён в начало.")
+        except Exception as e:
+            logger.warning(f"⚠️ Не удалось переместить лист '{self.report_sheet}' в начало: {e}")
 
         self._save()
 
