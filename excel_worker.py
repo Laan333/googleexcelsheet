@@ -41,8 +41,8 @@ class ExcelSingleFileWorker:
         if isinstance(cell, (datetime.datetime, datetime.date)):
             return cell.strftime('%d.%m.%Y')
         elif isinstance(cell, float):  # если число с плавающей точкой
-            # Если значение с плавающей точкой, оставляем запятую (ничего не меняем)
-            sanitized_value = str(cell).replace('.', ',')  # меняем точку на запятую
+            # Если число с плавающей точкой, просто возвращаем его как строку, не меняя
+            sanitized_value = str(cell).replace('.', ',')  # Меняем точку на запятую, если нужно
             logger.debug(f"Санитизировано число с плавающей точкой: {cell} -> {sanitized_value}")
             return sanitized_value
         elif isinstance(cell, int):  # если целое число
