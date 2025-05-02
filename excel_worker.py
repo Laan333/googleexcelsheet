@@ -37,11 +37,10 @@ class ExcelSingleFileWorker:
         wb.save(self.filepath)
 
     def _sanitize_cell(self, cell):
+        """ Обрабатываем ячейку, преобразуя её в строку или оставляем как есть. """
         if isinstance(cell, (datetime.datetime, datetime.date)):
             return cell.strftime('%d.%m.%Y')
-        elif cell is None:
-            return ""
-        return str(cell).strip()
+        return cell  # оставляем все остальные типы как есть
 
     def _create_or_replace_sheet(self, name: str):
         if name in self.wb.sheetnames:
@@ -59,9 +58,18 @@ class ExcelSingleFileWorker:
         source_ws = self.wb[self.report_sheet]
         archive_ws = self._create_or_replace_sheet(self.current_month_sheet)
 
+        # переместим архивный лист сразу после "Report" (если Report есть)
+        try:
+            report_index = self.wb.sheetnames.index(self.report_sheet)
+            self.wb._sheets.remove(archive_ws)
+            self.wb._sheets.insert(report_index + 1, archive_ws)
+        except Exception as e:
+            logger.warning(f"⚠️ Не удалось переставить лист {self.current_month_sheet}: {e}")
+
         rows_copied = 0
         for row in source_ws.iter_rows(values_only=True):
-            archive_ws.append([self._sanitize_cell(cell) for cell in row])
+            sanitized = [self._sanitize_cell(cell) for cell in row]
+            archive_ws.append(sanitized)
             rows_copied += 1
 
         logger.info(f"📥 Перенесено {rows_copied} строк из '{self.report_sheet}' в '{self.current_month_sheet}'.")
@@ -71,7 +79,12 @@ class ExcelSingleFileWorker:
 
         new_report_ws = self.wb.create_sheet(self.report_sheet)
         new_report_ws.append(headers)
-        logger.info(f"🧹 Лист '{self.report_sheet}' пересоздан, оставлены только заголовки.")
+
+        # перемещаем Report в начало
+        self.wb._sheets.remove(new_report_ws)
+        self.wb._sheets.insert(0, new_report_ws)
+
+        logger.info(f"🧹 Лист '{self.report_sheet}' пересоздан и перемещён в начало.")
 
         self._save()
 
