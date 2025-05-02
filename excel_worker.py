@@ -75,32 +75,52 @@ class ExcelSingleFileWorker:
         except Exception as e:
             logger.warning(f"⚠️ Не удалось переставить лист {self.current_month_sheet}: {e}")
 
-        # Копируем форматирование и значения ячеек напрямую
+        # Копируем данные напрямую без преобразования
         rows_copied = 0
 
         # Получаем максимальный размер данных на исходном листе
         max_row = source_ws.max_row
         max_col = source_ws.max_column
 
+        # Копируем ширину столбцов
+        for col_idx in range(1, max_col + 1):
+            col_letter = openpyxl.utils.get_column_letter(col_idx)
+            if col_letter in source_ws.column_dimensions:
+                archive_ws.column_dimensions[col_letter].width = source_ws.column_dimensions[col_letter].width
+
+        # Копируем все значения ячеек сначала
         for row_idx in range(1, max_row + 1):
             for col_idx in range(1, max_col + 1):
                 # Получаем ячейку из исходного листа
                 source_cell = source_ws.cell(row=row_idx, column=col_idx)
-                # Создаем ячейку в целевом листе
+                # Создаем ячейку в целевом листе с тем же значением
                 target_cell = archive_ws.cell(row=row_idx, column=col_idx)
-                # Копируем значение
+                # Копируем значение как есть
                 target_cell.value = source_cell.value
 
-                # Копируем формат ячейки (число, текст, дата и т.д.)
-                if source_cell.has_style:
-                    target_cell.font = source_cell.font
-                    target_cell.border = source_cell.border
-                    target_cell.fill = source_cell.fill
+                # Копируем формат числа - это самое важное для сохранения форматирования чисел
+                try:
                     target_cell.number_format = source_cell.number_format
-                    target_cell.protection = source_cell.protection
-                    target_cell.alignment = source_cell.alignment
+                except Exception as e:
+                    logger.warning(f"⚠️ Не удалось скопировать формат числа: {e}")
 
             rows_copied += 1
+
+        logger.info(f"📥 Перенесено {rows_copied} строк из '{self.report_sheet}' в '{self.current_month_sheet}'.")
+
+        headers = [cell.value for cell in next(source_ws.iter_rows(min_row=1, max_row=1))]
+        self.wb.remove(source_ws)
+
+        new_report_ws = self.wb.create_sheet(self.report_sheet)
+        new_report_ws.append(headers)
+
+        # перемещаем Report в начало
+        self.wb._sheets.remove(new_report_ws)
+        self.wb._sheets.insert(0, new_report_ws)
+
+        logger.info(f"🧹 Лист '{self.report_sheet}' пересоздан и перемещён в начало.")
+
+        self._save()
 
         logger.info(f"📥 Перенесено {rows_copied} строк из '{self.report_sheet}' в '{self.current_month_sheet}'.")
 
