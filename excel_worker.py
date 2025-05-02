@@ -40,6 +40,13 @@ class ExcelSingleFileWorker:
         """ Обрабатываем ячейку, преобразуя её в строку или оставляем как есть. """
         if isinstance(cell, (datetime.datetime, datetime.date)):
             return cell.strftime('%d.%m.%Y')
+        if isinstance(cell, float):  # если число с плавающей точкой
+            sanitized_value = f"{cell:.6f}".replace(",", ".")
+            logger.debug(f"Санитизировано число с плавающей точкой: {cell} -> {sanitized_value}")
+            return sanitized_value  # Преобразуем в строку с точкой
+        if isinstance(cell, int):  # если целое число
+            logger.debug(f"Санитизировано целое число: {cell}")
+            return str(cell)  # оставляем как строку целое число
         return cell  # оставляем все остальные типы как есть
 
     def _create_or_replace_sheet(self, name: str):
@@ -69,6 +76,7 @@ class ExcelSingleFileWorker:
         rows_copied = 0
         for row in source_ws.iter_rows(values_only=True):
             sanitized = [self._sanitize_cell(cell) for cell in row]
+            logger.debug(f"Перенос строки: {row} -> {sanitized}")  # Логирование значений
             archive_ws.append(sanitized)
             rows_copied += 1
 
