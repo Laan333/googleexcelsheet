@@ -41,10 +41,17 @@ class ExcelSingleFileWorker:
         if isinstance(cell, (datetime.datetime, datetime.date)):
             return cell.strftime('%d.%m.%Y')
         elif isinstance(cell, float):  # если число с плавающей точкой
-            # Если число с плавающей точкой, просто возвращаем его как строку, не меняя
-            sanitized_value = str(cell).replace('.', ',')  # Меняем точку на запятую, если нужно
-            logger.debug(f"Санитизировано число с плавающей точкой: {cell} -> {sanitized_value}")
-            return sanitized_value
+            # Вместо простого преобразования, сохраним точность как в Excel
+            # Используем форматирование для контроля количества знаков после запятой
+            # Сначала проверяем, содержит ли число дробную часть
+            if cell.is_integer():
+                return str(int(cell))  # Если число целое, возвращаем как целое
+            else:
+                # Преобразуем число с сохранением видимых знаков после запятой
+                # Ограничим до 10 знаков и удалим лишние нули справа
+                formatted = f"{cell:.10f}".rstrip('0').rstrip('.')
+                # Заменим точку на запятую для соответствия формату Excel
+                return formatted.replace('.', ',')
         elif isinstance(cell, int):  # если целое число
             logger.debug(f"Санитизировано целое число: {cell}")
             return str(cell)  # оставляем как строку целое число
