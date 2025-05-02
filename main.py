@@ -13,7 +13,7 @@ def main():
     while True:
         trigger = MonthlyTrigger()
         if trigger.check_and_trigger():
-            manager = ExcelSingleFileWorker(filepath='source.xlsx')
+            manager = ExcelSingleFileWorker(filepath='test_source.xlsx')
             manager.archive_full_report()
             logger.info('Задача выполнена.')
         time.sleep(60)
